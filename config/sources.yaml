@@ -1,0 +1,49 @@
+# profession.hu filter ID legend, pulled from the public value-set endpoint:
+#   https://rest.profession.hu/parameter/xml-import-values?api_key=<demo key from dev-connect docs>
+# Confirmed empirically against live /allasok pages on 2026-08-04.
+#
+# URL scheme: /allasok/{seo-slug}/{pos1,pos2,...}  (missing positions = 0)
+#   pos1 = page number (1-indexed)
+#   pos2 = category/sector id
+#   pos3 = region id (0 = nationwide)
+#   pos7 = language id
+#   pos8 = experience id
+#   pos18 = min salary (HUF)
+#   pos37 = job_place_type id (1 fixed, 2 flexible, 5 hybrid, 6 remote)
+#
+# URL filters AND-combine within one request; there is no single-URL way to
+# express "Budapest OR remote". Each entry under `targets` below is crawled
+# separately and merged by upserting on posting_id.
+
+categories:
+  it_programozas_fejlesztes:
+    id: 10
+    slug: it-programozas-fejlesztes
+
+regions:
+  budapest:
+    id: 23
+
+job_place_types:
+  remote:
+    id: 6
+
+# Total positional-param vector length used by the site (as observed).
+param_length: 37
+
+targets:
+  - name: budapest
+    category: it_programozas_fejlesztes
+    region: budapest
+    job_place_type: null
+
+  - name: remote_nationwide
+    category: it_programozas_fejlesztes
+    region: null
+    job_place_type: remote
+
+# Be a good citizen: fixed delay + jitter between requests, seconds.
+politeness:
+  min_delay: 1.5
+  max_delay: 3.0
+  user_agent_contact_env: CRAWLER_CONTACT_EMAIL
