@@ -5,7 +5,7 @@ one and upserting parsed cards into Postgres.
 import logging
 
 from tracker.config import load_yaml
-from tracker.db import get_connection, upsert_cards
+from tracker.db import get_connection, mark_delisted, upsert_cards
 from tracker.fetch import BASE_URL, PoliteSession
 from tracker.listing_parser import parse_listing_page, result_count
 
@@ -48,8 +48,9 @@ def _infer_work_arrangement(location_text: str | None, target: dict) -> str:
     return "onsite"
 
 
-def crawl_target(session: PoliteSession, conn, sources: dict, target: dict) -> dict:
+def crawl_target(session: PoliteSession, conn, sources: dict, target: dict) -> tuple[dict, set]:
     totals = {"inserted": 0, "updated_changed": 0, "updated_unchanged": 0, "pages": 0}
+    seen_ids: set = set()
 
     page = 1
     expected_total = None
@@ -69,6 +70,7 @@ def crawl_target(session: PoliteSession, conn, sources: dict, target: dict) -> d
         for card in cards:
             card.work_arrangement = _infer_work_arrangement(card.location, target)
 
+        seen_ids.update(card.posting_id for card in cards)
         stats = upsert_cards(conn, cards)
 
         for key in ("inserted", "updated_changed", "updated_unchanged"):
@@ -89,7 +91,7 @@ def crawl_target(session: PoliteSession, conn, sources: dict, target: dict) -> d
             break
         page += 1
 
-    return totals
+    return totals, seen_ids
 
 
 def run_crawl() -> dict:
@@ -98,9 +100,23 @@ def run_crawl() -> dict:
     conn = get_connection()
 
     results = {}
+    all_seen_ids: set = set()
     try:
         for target in sources["targets"]:
-            results[target["name"]] = crawl_target(session, conn, sources, target)
+            totals, seen_ids = crawl_target(session, conn, sources, target)
+            results[target["name"]] = totals
+            all_seen_ids |= seen_ids
+
+        if all_seen_ids:
+            delisted = mark_delisted(conn, "profession_hu", all_seen_ids)
+            log.info("delisted %d postings absent from this crawl", delisted)
+            results["delisted"] = delisted
+        else:
+            log.error(
+                "crawl saw zero postings across all targets — skipping delisting "
+                "to avoid wiping every previously-active posting"
+            )
+            results["delisted"] = None
     finally:
         conn.close()
 

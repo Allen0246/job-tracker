@@ -36,8 +36,12 @@ against text already stored in Postgres. That means:
 
 First pass scores only the listing card's own fields (title, tech stack, task summary,
 benefits, experience bracket — all present directly in the card markup, no extra
-request). Only postings that pass all three gates (stack / seniority / direction) get
-a follow-up request for their detail page.
+request). A posting that clears the stack and direction gates, and isn't outright
+disqualified on seniority, gets a follow-up request for its detail page and is
+re-scored with the real description before being counted as a match. "Not outright
+disqualified" is deliberately looser than "confirmed junior": card-level experience
+text is often blank or wrong, so a posting that's merely ambiguous on seniority still
+gets a look at the real description rather than being auto-rejected on thin card data.
 
 ## Politeness
 
@@ -58,7 +62,11 @@ is deliberately conservative:
 ## Data model
 
 - `postings` — one row per numeric posting ID (the ID suffix on every `/allas/...`
-  URL). `first_seen`/`last_seen` track whether a role is still listed; `content_hash`
+  URL). `first_seen`/`last_seen` track whether a role is still listed: after each
+  crawl, any posting previously active but absent from the newly-seen ID set is marked
+  `delisted_at` and drops out of scoring and digests from then on. A crawl that comes
+  back with zero postings refuses to delist anything — a silent failure (site outage,
+  blocked request) must not be allowed to wipe out every active posting. `content_hash`
   (over the raw card HTML) detects edits, e.g. a salary being added later. Raw HTML is
   kept alongside parsed fields so a parser fix can re-parse history instead of losing
   it if the site redesigns.
@@ -89,9 +97,20 @@ the Raspberry Pi; nothing in the code changes either way.
 ## Tuning what counts as a match
 
 Edit `config/keywords.yaml` — weighted positive/negative keywords for stack and
-direction, plus a disqualifier list and experience-text allowlist for the seniority
-gate. No code change, no redeploy: the next `python -m tracker.filter` run re-scores
-every stored posting against the new rules.
+direction, a disqualifier list for each gate, and an experience-text allowlist for
+seniority. No code change, no redeploy: the next `python -m tracker.filter` run
+re-scores every stored posting against the new rules.
+
+Two disqualifier lists go beyond plain keyword scoring:
+
+- `direction.disqualifiers` hard-excludes testing roles (QA, manual test, SDET, test
+  automation) even though "automation" is itself a positive direction keyword — a
+  weighted score alone can't tell "DevOps automation" from "QA automation engineer,"
+  so specific phrases override the score regardless of how high it is.
+- `level.disqualifiers` combines word-based terms (senior, lead, principal, ...) with a
+  numeric check: any "N years" / "N-M years" / "N éves" mention in the combined text
+  above `max_years_experience` hard-disqualifies, catching postings that read as
+  junior in the title but require, say, 5 years' experience in the body.
 
 ## Scope
 

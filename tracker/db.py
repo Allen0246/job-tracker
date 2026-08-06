@@ -132,6 +132,31 @@ def save_detail(conn, posting_id: int, detail) -> None:
     conn.commit()
 
 
+def mark_delisted(conn, source: str, seen_ids: set) -> int:
+    """Marks postings absent from the latest crawl as delisted.
+
+    Scoped to `source` and requires a non-empty seen_ids: a crawl that
+    silently returned nothing (site outage, blocked request, parser
+    break) must not be allowed to wipe out every previously-active
+    posting. Callers should treat an empty seen_ids as a failed run and
+    skip calling this rather than pass it through.
+    """
+    if not seen_ids:
+        raise ValueError("refusing to mark delisted from an empty seen_ids set")
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE postings
+            SET delisted_at = now()
+            WHERE delisted_at IS NULL AND source = %s AND NOT (posting_id = ANY(%s))
+            """,
+            (source, list(seen_ids)),
+        )
+        count = cur.rowcount
+    conn.commit()
+    return count
+
+
 def unsent_survivors(conn) -> list[dict]:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(

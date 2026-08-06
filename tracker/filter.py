@@ -3,12 +3,16 @@
 Reads fresh from disk on every run, so tuning the criteria is a re-run
 over already-crawled postings, never a re-crawl and never a code change.
 First pass scores against card-level text only (cheap, no network).
-Postings that pass all three gates but don't yet have a detail page
-fetched get one fetched and are re-scored with the richer text before
-being counted as a survivor.
+Postings that pass stack + direction and aren't outright disqualified on
+level get their detail page fetched and are re-scored with the richer
+text before being counted as a survivor — card-level experience_level is
+often blank or wrong, so an ambiguous (not disqualified, not yet
+confirmed) level gate gets a second look at the real description rather
+than an auto-reject.
 """
 
 import logging
+import re
 
 from tracker.config import load_yaml
 from tracker.db import fetch_active_postings, get_connection, save_detail, save_score
@@ -43,8 +47,31 @@ def _score_keywords(text: str, spec: dict) -> float:
     return score
 
 
+def _disqualified(text: str, spec: dict) -> bool:
+    return any(dq.lower() in text for dq in spec.get("disqualifiers", []))
+
+
+# Catches "5 years", "5-10 years", "10+ years", "5 éves", "5 év" — takes the
+# lower bound of a range as the stated minimum. A flat "5 years experience"
+# on a posting titled "Junior ..." never matched the old literal-string
+# disqualifiers (only "5-10 years"/"10+ years"/">10 years" were listed), so
+# it slipped through despite exceeding max_years_experience.
+_YEARS_RE = re.compile(r"(\d+)\s*(?:-\s*\d+\s*)?\+?\s*(?:years?|yrs?|éves?)")
+
+
+def _exceeds_experience_cap(text: str, spec: dict) -> bool:
+    max_years = spec.get("max_years_experience")
+    if max_years is None:
+        return False
+    return any(int(n) > max_years for n in _YEARS_RE.findall(text))
+
+
+def _level_disqualified(text: str, spec: dict) -> bool:
+    return _disqualified(text, spec) or _exceeds_experience_cap(text, spec)
+
+
 def _level_gate(text: str, experience_level: str | None, spec: dict) -> bool:
-    if any(dq.lower() in text for dq in spec.get("disqualifiers", [])):
+    if _level_disqualified(text, spec):
         return False
     exp_text = (experience_level or "").lower()
     ok_terms = spec.get("ok_experience_text", [])
@@ -62,13 +89,30 @@ def score_posting(row: dict, keywords: dict) -> dict:
     return {
         "score": stack_score + direction_score,
         "gate_stack": stack_score >= keywords["stack"]["threshold"],
-        "gate_direction": direction_score >= keywords["direction"]["threshold"],
+        "gate_direction": (
+            direction_score >= keywords["direction"]["threshold"]
+            and not _disqualified(text, keywords["direction"])
+        ),
         "gate_level": _level_gate(text, row.get("experience_level"), keywords["level"]),
+        "level_disqualified": _level_disqualified(text, keywords["level"]),
     }
 
 
 def _is_survivor(result: dict) -> bool:
     return result["gate_stack"] and result["gate_level"] and result["gate_direction"]
+
+
+def _worth_detail_fetch(row: dict, result: dict) -> bool:
+    """Card text is often missing or wrong on experience level, so a
+    posting that isn't outright senior-disqualified still deserves a look
+    at the real description before being rejected on thin card data.
+    """
+    return (
+        result["gate_stack"]
+        and result["gate_direction"]
+        and not result["level_disqualified"]
+        and not row.get("detail_fetched_at")
+    )
 
 
 def run_filter() -> dict:
@@ -85,7 +129,7 @@ def run_filter() -> dict:
             stats["scored"] += 1
 
             survivor = _is_survivor(result)
-            if survivor and not row.get("detail_fetched_at"):
+            if _worth_detail_fetch(row, result):
                 if session is None:
                     session = PoliteSession()
                 try:
