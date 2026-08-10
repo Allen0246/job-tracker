@@ -1,0 +1,16 @@
+# EPAM — job data (including the full HTML description) is embedded
+# directly in the location-filtered page's own JS state, keyed
+# "jobs":{"total":N,"jobs":[...]}. No detail-fetch stage needed — same
+# single-request shape as Algolia/Ashby.
+#
+# robots.txt disallows /api and /api/* entirely (not a narrow path like
+# Radancy's), and no compliant path- or query-based pagination was
+# found (query-string filtering/paging is separately disallowed too:
+# ?page*, ?skill*, ?search*, ?query*). That leaves a hard cap at
+# whatever the bare location page renders server-side — confirmed 10 of
+# 106 Hungary postings. Accepted as a known gap, not worth pursuing
+# further given the explicit /api block.
+companies:
+  - name: EPAM
+    host: careers.epam.com
+    list_url: "https://careers.epam.com/en/jobs/hungary"

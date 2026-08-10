@@ -1,0 +1,42 @@
+# Radancy — search-jobs (the location-filtered search UI) is disallowed
+# by robots.txt on both hosts (`Disallow:/search-jobs/`), confirmed on
+# both Citi and BlackRock. The compliant alternative: sitemap.xml lists
+# /category/<slug>/<org_id>/<category_id>/<page> pages, not covered by
+# that rule, confirmed allowed and working. Those pages have no location
+# filter though (global results) — location filtering happens
+# client-side in tracker/radancy.py, same "fetch coarse, filter in
+# Python" shape as everywhere else, just applied at a different point.
+#
+# Only tech-adjacent categories are crawled per company, not every
+# category the sitemap lists (65 for Citi alone) — most (sales, HR,
+# legal, wealth management, etc.) are irrelevant to begin with.
+# Data-science/data-analytics categories are deliberately excluded too,
+# per an explicit "not intending to be a data engineer" preference.
+companies:
+  - name: Citi
+    host: jobs.citi.com
+    org_id: 287
+    categories:
+      - { slug: technology-jobs, id: 19627 }
+      - { slug: applications-development-jobs, id: 9378704 }
+      - { slug: digital-software-engineering-jobs, id: 9378752 }
+      - { slug: infrastructure-jobs, id: 9378848 }
+      - { slug: systems-and-engineering-jobs, id: 9378736 }
+      - { slug: architecture-jobs, id: 8644160 }
+      - { slug: information-security-jobs, id: 8645600 }
+
+  - name: BlackRock
+    host: careers.blackrock.com
+    org_id: 45831
+    categories:
+      - { slug: software-engineering-jobs, id: 8771056 }
+      - { slug: system-engineering-jobs, id: 8771296 }
+      - { slug: technology-design-jobs, id: 9019424 }
+      - { slug: architecture-jobs, id: 9034832 }
+      - { slug: information-security-jobs, id: 8848976 }
+
+# Only postings whose location text mentions one of these are kept —
+# these category pages return global results, not Budapest-filtered.
+location_match:
+  - budapest
+  - hungary

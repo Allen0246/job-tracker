@@ -1,0 +1,15 @@
+# Algolia — a third-party search widget many career sites embed, not
+# vendor-hosted infrastructure. Search-only API keys are, by Algolia's
+# own design, meant to be public (safe to call directly) — found
+# embedded in an inline <script> on the page itself
+# (window.AG_ID/AG_KEY/AG_INDEX for MSCI), not reverse-engineered from
+# a restricted endpoint. Confirmed no robots.txt restrictions on either
+# careers.msci.com or the Algolia API host itself.
+companies:
+  - name: MSCI
+    app_id: RVMOB42DFH
+    api_key: 629e647c6a9a8b542fb1022001313a7e
+    index: production__mscicare2201__sort-rank
+    site_host: careers.msci.com
+    location_facet: town_city_country
+    location_value: "Budapest | Hungary"

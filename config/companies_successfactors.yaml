@@ -1,0 +1,45 @@
+# SuccessFactors (Career Site Builder) — companies here don't share one
+# uniform page template the way Eightfold's tenants shared one API. Two
+# distinct list-page shapes are confirmed so far:
+#
+#   static_page — a single server-rendered results page, no pagination
+#     needed (confirmed for SAP: 13 of 13 shown on one page). Just GET
+#     `url` once.
+#   tile_ajax — an initial server-rendered page plus a same-origin AJAX
+#     fragment endpoint for further pages (confirmed for ONE Hungary:
+#     25 of 33 on the initial page, remaining 8 via
+#     `{base_path}/tile-search-results/category/{catid}?startrow=25`,
+#     verified zero ID overlap between page 1 and page 2).
+#
+# Despite the different list markup, both confirmed shapes render the
+# actual job title link with the same class name (`jobTitle-link`) and
+# the same detail-page description container (`class="jobdescription"`)
+# — see tracker/successfactors.py.
+#
+# RSS (job2web / J2WRSS, linked in every page's own <head>) is NOT used
+# here despite being simpler to parse: robots.txt explicitly disallows
+# /services/ on all these hosts, and the feed lives under
+# /services/rss/category/ — confirmed blocked, not a guess.
+companies:
+  - name: HCLTech
+    host: careers.hcltech.com
+    method: static_page
+    url: https://careers.hcltech.com/go/NonTPDemand/9558355/
+    # Confirmed 0 open Hungary roles as of 2026-08-06, two independent
+    # ways: the RSS feed's placeholder "No jobs currently available"
+    # item, and zero jobTitle-link elements on the page itself. A real
+    # empty state, not a scrape failure — catid=9558355 is the only
+    # category referenced anywhere on the site's own page.
+
+  - name: SAP
+    host: jobs.sap.com
+    method: static_page
+    url: https://jobs.sap.com/go/SAP-Careers-Hungary/5516901/
+
+  - name: ONE Hungary
+    host: karrier.4iggroup.hu
+    method: tile_ajax
+    url: https://karrier.4iggroup.hu/onehungary/go/%C3%81ll%C3%A1saink-ONE/9375755/
+    base_path: /onehungary
+    catid: 9375755
+    page_size: 25

@@ -42,8 +42,4 @@ targets:
     region: null
     job_place_type: remote
 
-# Be a good citizen: fixed delay + jitter between requests, seconds.
-politeness:
-  min_delay: 1.5
-  max_delay: 3.0
-  user_agent_contact_env: CRAWLER_CONTACT_EMAIL
+# Rate limiting is shared across all sources — see config/politeness.yaml

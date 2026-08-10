@@ -40,3 +40,37 @@ CREATE TABLE IF NOT EXISTS sent_log (
 
 CREATE INDEX IF NOT EXISTS idx_postings_last_seen ON postings (last_seen);
 CREATE INDEX IF NOT EXISTS idx_postings_delisted_at ON postings (delisted_at);
+
+-- One row per source per run_daily execution. Lets "a source normally
+-- returns 40 and returns 0" be caught by querying history instead of
+-- grepping logs — the failure mode that quietly looks like "nobody is
+-- hiring" if nothing tracks what a source's healthy baseline looks like.
+CREATE TABLE IF NOT EXISTS crawl_runs (
+    id            SERIAL PRIMARY KEY,
+    source        TEXT NOT NULL,
+    run_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fetched_count INTEGER,          -- distinct postings seen this run, NULL if the crawl errored before counting
+    success       BOOLEAN NOT NULL,
+    error_message TEXT,
+    full_scan     BOOLEAN NOT NULL DEFAULT true  -- false = an early-stop run (see scan_watermarks); delisting is
+                                                  -- only trustworthy on full_scan runs, which saw the whole listing
+);
+
+CREATE INDEX IF NOT EXISTS idx_crawl_runs_source_run_at ON crawl_runs (source, run_at);
+
+-- Lets a paginated source (currently Radancy) skip re-scanning postings
+-- it already covered on a previous full scan: the highest job ID seen
+-- per (source, scope) — scope is adapter-defined, e.g. "Citi:technology
+-- -jobs" — stands in for "how far I've already looked," without needing
+-- to have actually stored every ID that scrolled past (Radancy only
+-- stores Budapest/Hungary matches, so most IDs seen are never in
+-- `postings` at all). Job IDs here are assumed roughly time-ordered,
+-- confirmed empirically for Radancy (a real page came back in strictly
+-- descending numeric ID order).
+CREATE TABLE IF NOT EXISTS scan_watermarks (
+    source     TEXT NOT NULL,
+    scope      TEXT NOT NULL,
+    max_job_id BIGINT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (source, scope)
+);

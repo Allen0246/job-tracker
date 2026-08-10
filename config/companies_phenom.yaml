@@ -1,0 +1,14 @@
+# Phenom — job data is embedded directly in the search page's own JS
+# (marker key "eagerLoadRefineSearch"), and detail pages use standard
+# schema.org JobPosting JSON-LD — the exact same shape as profession.hu,
+# so tracker/detail_parser.py's parser is reused directly for detail.
+#
+# Pagination beyond the first page (10 of 12 results here) wasn't found
+# — none of the common query params (start/page/pageNum/p) changed the
+# embedded results, and no "load more" AJAX endpoint was discoverable
+# from the static page. Accepted as a small known gap (2 postings),
+# not worth the investigation cost at this scale — see tracker/phenom.py.
+companies:
+  - name: GE HealthCare
+    host: careers.gehealthcare.com
+    search_url: "https://careers.gehealthcare.com/global/en/search-results?keywords=Budapest"

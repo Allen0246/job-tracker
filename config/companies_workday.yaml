@@ -1,0 +1,16 @@
+# Workday — one documented API shape, confirmed identical in spirit
+# across tenants (only host/tenant/site differ):
+#   POST https://<host>/wday/cxs/<tenant>/<site>/jobs
+#     body: {"appliedFacets": {"locationCountry": [<facet_id>]}, "limit":
+#     N, "offset": 0, "searchText": ""}
+#   GET https://<host>/wday/cxs/<tenant>/<site><externalPath>
+# Confirmed cold-callable, no auth. locationCountry filters server-side —
+# unlike Eightfold/Radancy/Ashby, no client-side location filtering
+# needed here. Neither path is disallowed by robots.txt (only
+# /refreshFacet/ is).
+companies:
+  - name: Cloudera
+    host: cloudera.wd5.myworkdayjobs.com
+    tenant: cloudera
+    site: External_Career
+    location_country_facet_id: 9db257f5937e4421b2fac64eec6832f8 # Hungary

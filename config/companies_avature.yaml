@@ -1,0 +1,33 @@
+# Avature — server-rendered list and detail pages, no API needed.
+#
+# jobs.siemens.com serves ALL Siemens brands/subsidiaries (Siemens
+# Mobility, Siemens Healthineers, evosoft, ...) from one Avature
+# instance (portal 144). The old narrow evosoft-only search
+# (SearchJobs/evosoft) still works, but evosoft postings are a strict
+# subset of the broad SearchJobs endpoint (confirmed: the same job IDs
+# appear in both), so crawling narrow-then-broad would just fight over
+# which crawl's static company name wins on each shared posting_id.
+# Broad-only avoids that entirely and covers every Siemens entity, not
+# just evosoft.
+#
+# The real per-posting legal entity (e.g. "evosoft Hungary
+# Szamitastechnikai Kft.", "Siemens Mobility Kft.", "Siemens Healthcare
+# Kft.") is NOT reliable from list-page data — it only appears in a
+# "Company" field on each job's detail page. tracker/avature.py reads
+# it there and overwrites the list-time placeholder company name once
+# the detail is fetched (avature is a thin-card source, so every
+# surviving posting always gets a detail fetch).
+#
+# The 42386/42387 facet params are a genuine server-side Hungary +
+# Budapest location filter (confirmed against a "Multiple Locations"
+# posting whose detail page's own Location(s) list includes "Budapest -
+# Budapest - Hungary" alongside Lisbon/Madrid/Warsaw etc — the facet is
+# filtering on the full location list, not just a primary location).
+#
+# robots.txt explicitly allows /externaljobs (only a `qtvc=` tracking
+# param is disallowed, never sent here).
+companies:
+  - name: Siemens
+    host: jobs.siemens.com
+    search_url: "https://jobs.siemens.com/en_US/externaljobs/SearchJobs?42386=%5B812024%5D&42386_format=17546&42387=%5B815349%5D&42387_format=17547&listFilterMode=1"
+    records_per_page: 6

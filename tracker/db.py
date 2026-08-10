@@ -9,7 +9,7 @@ INSERT INTO postings (
     experience_level, language_req, benefits, tech_stack, task_summary,
     raw_card_html, content_hash
 ) VALUES (
-    %(posting_id)s, 'profession_hu', %(url)s, %(title)s, %(company)s, %(location)s, %(work_arrangement)s,
+    %(posting_id)s, %(source)s, %(url)s, %(title)s, %(company)s, %(location)s, %(work_arrangement)s,
     %(experience_level)s, %(language_req)s, %(benefits)s, %(tech_stack)s, %(task_summary)s,
     %(raw_card_html)s, %(content_hash)s
 )
@@ -35,8 +35,8 @@ def get_connection():
     return psycopg2.connect(env("DATABASE_URL", required=True))
 
 
-def upsert_cards(conn, cards: list) -> dict:
-    """Insert or refresh a batch of parsed listing cards.
+def upsert_cards(conn, cards: list, source: str) -> dict:
+    """Insert or refresh a batch of parsed listing cards from one source.
 
     Returns counts of {inserted, updated_changed, updated_unchanged} for
     visibility into how much of a crawl was actually new information.
@@ -55,6 +55,7 @@ def upsert_cards(conn, cards: list) -> dict:
                 _UPSERT_SQL,
                 {
                     "posting_id": card.posting_id,
+                    "source": source,
                     "url": card.url,
                     "title": card.title,
                     "company": card.company,
@@ -85,7 +86,7 @@ def fetch_active_postings(conn) -> list[dict]:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT posting_id, url, title, tech_stack, task_summary, benefits,
+            SELECT posting_id, source, url, title, tech_stack, task_summary, benefits,
                    language_req, experience_level, detail_text, detail_fetched_at
             FROM postings
             WHERE delisted_at IS NULL
@@ -108,24 +109,51 @@ def save_score(conn, posting_id: int, result: dict) -> None:
     conn.commit()
 
 
-def save_detail(conn, posting_id: int, detail) -> None:
-    work_arrangement_override = "remote" if detail.job_location_type == "TELECOMMUTE" else None
+def save_detail(
+    conn,
+    posting_id: int,
+    *,
+    raw_detail_html: str,
+    detail_text: str | None,
+    job_location_type: str | None = None,
+    experience_level: str | None = None,
+    company: str | None = None,
+) -> None:
+    """Persists a fetched detail page/record, source-agnostic.
+
+    `job_location_type` is profession.hu's JSON-LD vocabulary
+    ("TELECOMMUTE" means remote); other sources that already know work
+    arrangement at list time (e.g. Eightfold's workLocationOption) just
+    pass None here and leave the existing value alone. `experience_level`
+    lets a source fill in a structured level signal only discoverable at
+    detail time (e.g. Eightfold's per-tenant custom level field); COALESCE
+    keeps whatever was already there when a source doesn't have one.
+    `company` lets a source correct a list-time placeholder company name
+    once the real per-posting legal entity is known (e.g. Avature's
+    Siemens listing, where the list page only knows "Siemens" but the
+    detail page's own "Company" field gives the actual subsidiary).
+    """
+    work_arrangement_override = "remote" if job_location_type == "TELECOMMUTE" else None
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE postings
             SET raw_detail_html = %(raw_detail_html)s,
                 detail_text = %(detail_text)s,
-                detail_location_type = %(detail_location_type)s,
+                detail_location_type = %(job_location_type)s,
                 detail_fetched_at = now(),
-                work_arrangement = COALESCE(%(work_arrangement_override)s, work_arrangement)
+                work_arrangement = COALESCE(%(work_arrangement_override)s, work_arrangement),
+                experience_level = COALESCE(%(experience_level)s, experience_level),
+                company = COALESCE(%(company)s, company)
             WHERE posting_id = %(posting_id)s
             """,
             {
-                "raw_detail_html": detail.raw_detail_html,
-                "detail_text": detail.description,
-                "detail_location_type": detail.job_location_type,
+                "raw_detail_html": raw_detail_html,
+                "detail_text": detail_text,
+                "job_location_type": job_location_type,
                 "work_arrangement_override": work_arrangement_override,
+                "experience_level": experience_level,
+                "company": company,
                 "posting_id": posting_id,
             },
         )
@@ -157,11 +185,86 @@ def mark_delisted(conn, source: str, seen_ids: set) -> int:
     return count
 
 
+def active_posting_ids_for_company(conn, source: str, company: str) -> set:
+    """Currently active posting_ids for one company within a source.
+
+    Used when a company is disabled in its companies_*.yaml config: the
+    adapter skips actually crawling it, but mark_delisted() is scoped to
+    the whole source, not per company, so its previously-collected
+    postings must be folded into this run's seen_ids or they'd get
+    wrongly marked delisted for simply not being re-checked.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT posting_id FROM postings WHERE source = %s AND company = %s AND delisted_at IS NULL",
+            (source, company),
+        )
+        return {row[0] for row in cur.fetchall()}
+
+
+def record_crawl_run(
+    conn,
+    source: str,
+    fetched_count: int | None,
+    success: bool,
+    error_message: str | None = None,
+    full_scan: bool = True,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO crawl_runs (source, fetched_count, success, error_message, full_scan)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (source, fetched_count, success, error_message, full_scan),
+        )
+    conn.commit()
+
+
+def last_full_scan_at(conn, source: str):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT run_at FROM crawl_runs
+            WHERE source = %s AND full_scan AND success
+            ORDER BY run_at DESC LIMIT 1
+            """,
+            (source,),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def get_watermark(conn, source: str, scope: str) -> int | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT max_job_id FROM scan_watermarks WHERE source = %s AND scope = %s",
+            (source, scope),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def set_watermark(conn, source: str, scope: str, max_job_id: int) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO scan_watermarks (source, scope, max_job_id, updated_at)
+            VALUES (%s, %s, %s, now())
+            ON CONFLICT (source, scope) DO UPDATE SET
+                max_job_id = GREATEST(scan_watermarks.max_job_id, EXCLUDED.max_job_id),
+                updated_at = now()
+            """,
+            (source, scope, max_job_id),
+        )
+    conn.commit()
+
+
 def unsent_survivors(conn) -> list[dict]:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """
-            SELECT p.posting_id, p.url, p.title, p.company, p.location,
+            SELECT p.posting_id, p.source, p.url, p.title, p.company, p.location,
                    p.work_arrangement, p.benefits, p.task_summary, p.score
             FROM postings p
             LEFT JOIN sent_log s ON s.posting_id = p.posting_id
