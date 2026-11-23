@@ -9,6 +9,8 @@ After=network-online.target docker.service
 Type=oneshot
 User=@USER@
 WorkingDirectory=@PROJECT_DIR@
-ExecStart=@PROJECT_DIR@/.venv/bin/python -m tracker.run_daily
+# Quoted: systemd splits ExecStart on spaces, and the project folder may
+# have one ("job tracker"). WorkingDirectory takes the whole line as-is.
+ExecStart="@PROJECT_DIR@/.venv/bin/python" -m tracker.run_daily
 # A healthy run takes a few minutes; anything far past that is hung.
 TimeoutStartSec=1h
