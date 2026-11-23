@@ -103,8 +103,6 @@ direction:
     "vue.js": -1
     "ui/ux": -2
     designer: -2
-    "bi developer*": -2
-    "data engineer*": -1 # also "data engineering"
   # Testing roles hard-disqualify even though "automation" is a positive
   # signal above: "QA Automation Engineer" scores automation:2 and often
   # python:3 on stack, clearing both thresholds despite being a testing
@@ -112,6 +110,11 @@ direction:
   # developer's description often mentions testing innocently ("work
   # closely with our QA engineer", "test automation is a plus").
   title_disqualifiers:
+    # Not testing roles, but the same idea: a negative score alone gets
+    # outweighed by "automation"/"cloud"/"api" in a BI/data posting's
+    # description, so these are rejected by title outright.
+    - "bi developer*"
+    - "data engineer*" # also "Data Engineering Intern" etc.
     - "test automation"
     - "qa automation"
     - sdet
