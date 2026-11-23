@@ -49,11 +49,15 @@ def _combined_text(row: dict) -> str:
 # plurals and above all for Hungarian, which inflects by suffix
 # ("automatizációs", "minőségbiztosítási", "vezetőt") — a strict whole
 # word would miss those.
+#
+# A leading "*" likewise drops the start boundary, for Hungarian
+# compounds written as one word ("*menedzser" also hits
+# "projektmenedzser", "*tesztelő" hits "szoftvertesztelő").
 def _term_pattern(term: str) -> str:
-    open_ended = term.endswith("*")
-    term = term.rstrip("*")
-    prefix = r"\b" if term[0].isalnum() else ""
-    suffix = r"\b" if term[-1].isalnum() and not open_ended else ""
+    open_start, open_end = term.startswith("*"), term.endswith("*")
+    term = term.strip("*")
+    prefix = r"\b" if term[0].isalnum() and not open_start else ""
+    suffix = r"\b" if term[-1].isalnum() and not open_end else ""
     return f"{prefix}{re.escape(term)}{suffix}"
 
 

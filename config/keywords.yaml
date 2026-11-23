@@ -13,6 +13,8 @@
 #
 # A trailing "*" means "this word plus any suffix": use it for plurals and
 # Hungarian inflected forms ("vezető*" also hits "vezetőt", "vezetője").
+# A leading "*" means "anything in front", for Hungarian compounds written
+# as one word ("*menedzser" also hits "projektmenedzser").
 # Always quote such terms — a bare * is YAML alias syntax.
 
 stack:
@@ -115,6 +117,14 @@ direction:
     # description, so these are rejected by title outright.
     - "bi developer*"
     - "data engineer*" # also "Data Engineering Intern" etc.
+    # System administrator roles ("rendszergazda*" is in the full-text list
+    # below, so it also catches sysadmin requirements in a description).
+    - "system administrator*"
+    - "sysadmin*"
+    # Manager roles of any kind (application/project/product/engineering).
+    # Whole word, so "management" in a title doesn't match.
+    - "manager*"
+    - "*menedzser*" # also "projektmenedzser"
     - "test automation"
     - "qa automation"
     - sdet
@@ -123,7 +133,12 @@ direction:
     - "software tester"
     - "test engineer"
     - "manual tester"
-    - "tesztmérnök*"
-    - "tesztelő*"
+    - "*tesztmérnök*"
+    - "*tesztelő*" # also "szoftvertesztelő"
     - "minőségbiztosítás*"
     - "teszt automatizálás*"
+  # Checked against the whole posting, description included. Sysadmin work
+  # isn't wanted even as part of another role: any mention of it
+  # ("Magabiztos RHEL/RHCOS rendszergazdai tudás") rejects the posting.
+  disqualifiers:
+    - "rendszergazda*"

@@ -157,10 +157,18 @@ re-scores every stored posting against the new rules.
 Terms match as whole words, so `lead` doesn't hit "industry-leading" and `git`
 doesn't hit "digital". End a term with `*` (quoted: `"vezető*"`) to also match any
 suffix — needed for plurals and Hungarian inflections ("vezetőt", "automatizációs").
+Start it with `*` (`"*menedzser"`) to also match anything in front, for Hungarian
+compounds written as one word ("projektmenedzser", "szoftvertesztelő").
+
+Each gate has two kinds of disqualifier list: `disqualifiers` is checked against the
+whole posting (title, card fields and full description), `title_disqualifiers` against
+the job title only. Use the title-only list for words that name a kind of role but also
+appear innocently in ordinary descriptions ("work closely with our QA engineer", "we
+also run an internship program").
 
 Two disqualifier lists go beyond plain keyword scoring:
 
-- `direction.disqualifiers` hard-excludes testing roles (QA, manual test, SDET, test
+- `direction.title_disqualifiers` hard-excludes testing roles (QA, manual test, SDET, test
   automation) even though "automation" is itself a positive direction keyword — a
   weighted score alone can't tell "DevOps automation" from "QA automation engineer,"
   so specific phrases override the score regardless of how high it is.
