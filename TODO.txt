@@ -1,0 +1,142 @@
+JOB TRACKER — DEFERRED WORK NOTES
+Started: 2026-08-13
+Trigger to resume: once the Raspberry Pi is set up, refactor the crawler code below.
+
+===============================================================================
+1. EPAM crawler only sees 10 of ~109 Hungary postings
+===============================================================================
+Root cause:
+  tracker/epam.py fetches one bare page (https://careers.epam.com/en/jobs/hungary).
+  EPAM's Next.js app embeds a "jobs":{"total":109,"jobs":[...]} blob directly in
+  that page's HTML, but the server only ever renders the first 10 jobs into it —
+  there's no page-2 for the embedded data.
+
+  Confirmed dead ends (2026-08-13):
+    - Query-string pagination/filtering (?page=, ?search=, ?skill=, etc.) is
+      explicitly disallowed by EPAM's robots.txt.
+    - /api and /api/* is fully disallowed too.
+    - Path-based pagination guesses (/en/jobs/hungary/2, /page/2) return a
+      soft-404 (HTTP 200, Next.js catch-all "not found" page) — doesn't exist.
+    - No Algolia or other third-party search backend found embedded in the page.
+
+Compliant path found: sitemap.xml.gz
+  - https://careers.epam.com/sitemap.xml.gz — NOT blocked by robots.txt.
+  - Served pre-gzipped or plain depending on Accept-Encoding; `requests` handles
+    this transparently.
+  - Lists ~3,526 individual /vacancy/ URLs globally (3,516 "_en", 10 "_uk"),
+    each with a <lastmod> date (day granularity, genuinely varies per URL —
+    confirmed NOT a blanket "generated today" stamp, so usable as a real
+    incremental signal).
+  - NO country field in the sitemap itself — country only appears once you
+    fetch the individual vacancy page's embedded __NEXT_DATA__ JSON
+    (pageProps.job — same field shape as the list page's job objects: uid,
+    name, seniority, skills, city, country, vacancy_type, description, seo).
+  - Confirmed: both example URLs the user found on EPAM's live search
+    (senior-python-web-developer-blt81f2f5f6479c2661_en,
+    senior-python-developer-blt7bb611798c4757fa_en) exist in the sitemap and
+    are NOT currently in our DB at all — i.e. the gap is real, not a filtering
+    false-negative.
+
+Planned fix (agreed direction: "incremental sitemap crawl"):
+  - One-time backfill: fetch all ~3,500 vacancy pages once (~2hrs at current
+    politeness.yaml pacing of 1.5-3.0s/request), extract job JSON from each,
+    keep the ones where country == Hungary, upsert as normal.
+  - Ongoing runs: fetch the sitemap (1 cheap request), then only fetch vacancy
+    pages whose <lastmod> is newer than a stored watermark (reuse the
+    scan_watermarks table pattern from db.py/radancy.py — will need a
+    date-based watermark instead of the existing max_job_id BIGINT scheme,
+    or repurpose it as a YYYYMMDD int).
+  - Delisting: don't need to refetch every page for this — just diff the
+    current sitemap's URL list against previously-known Hungary posting URLs
+    in the DB. A URL missing from the sitemap ⇒ delisted. Cheap, one request.
+  - Caveat: since the sitemap has no country field, every NEW/changed posting
+    GLOBALLY (not just Hungary) has to be fetched to find out if it's Hungary
+    — so daily incremental cost tracks EPAM's total global churn, not just
+    Hungary's. Still much cheaper than the full 3,500 after backfill (rough
+    daily churn observed: tens to low hundreds of postings/day across all of
+    EPAM globally, based on sitemap lastmod distribution).
+
+===============================================================================
+2. robots.txt parser bug in tracker/fetch.py — REAL COMPLIANCE GAP
+===============================================================================
+Found while checking whether we could fetch
+  https://careers.epam.com/en/jobs/hungary?skills=python&sort_by=relevance
+
+EPAM's robots.txt has (standard wildcard syntax):
+  Disallow: /*?skill*
+  Disallow: /*?search*
+  Disallow: /*?page*
+  ...etc, all using a leading "/*" wildcard.
+
+tracker/fetch.py's _parse_robots_rules/_can_fetch ONLY does literal prefix
+matching (path.startswith(rule_path)) — its own docstring admits "Doesn't
+support mid-path "*" wildcards". A rule stored as the literal string
+"/*?skill*" can never match any real request path (no real path starts with
+the two characters "/*"), so every one of these Disallow lines is silently a
+no-op. Verified directly:
+
+    rules = _parse_robots_rules(epam_robots_txt)
+    _can_fetch(rules, "/en/jobs/hungary?skills=python&sort_by=relevance")
+    => True   (should be False)
+
+This is shared code (PoliteSession is used by every adapter), and
+"Disallow: /*param*" is an extremely common robots.txt convention (Google's
+own robots.txt uses it) — so this isn't EPAM-specific risk, it potentially
+undermines the "polite/compliant" premise of the whole crawler wherever a
+site uses that pattern.
+
+Planned fix:
+  - Implement real wildcard matching in _can_fetch (glob-style: "*" matches
+    any sequence, "$" still anchors end-of-path like today).
+  - After fixing, re-check every adapter's actual request URLs against their
+    real host's robots.txt to see if anything we're CURRENTLY doing would
+    become disallowed under correct matching (i.e. audit for regressions,
+    not just fix EPAM's case).
+
+===============================================================================
+3. Other sources with the same "single page / hard cap" shape as EPAM
+===============================================================================
+Audited all adapters on 2026-08-13. Full list:
+
+FULL COVERAGE (loop until exhausted — no changes needed):
+  - crawler.py (profession.hu) — pages until page*page_size >= expected_total
+  - eightfold.py — loops start/count until exhausted
+  - workday.py — loops offset/total until exhausted
+  - avature.py (Siemens) — loops folderOffset until an empty page
+  - successfactors.py — loops (tile_ajax) until no new IDs, or single static
+    page already has everything
+  - ashby.py — single request, but the WHOLE board is embedded by design —
+    genuinely complete, not truncated
+
+SAME SHAPE AS EPAM (capped at one page/request, no pagination mechanism):
+  - phenom.py (GE HealthCare) — identical root cause to EPAM, ALREADY
+    documented as an accepted gap in companies_phenom.yaml. Currently missing
+    2 of 12 (10 of 12 fetched). Small scale, same fix pattern would apply if
+    revisited (check for a sitemap first).
+  - icims.py (One Identity) — NO pagination code exists at all, just one
+    request per company. Currently 9 of 9 active in DB (matches page content
+    exactly — not actually truncating right now because the real result set
+    happens to fit on one page). Latent risk, not an active bug.
+  - algolia.py (MSCI) — hardcoded hitsPerPage=100, no loop past that.
+    Currently 10 active postings (nowhere near the cap). Same latent-risk
+    shape as icims.py.
+
+PARTIAL / SELF-AWARE MIDDLE CASE:
+  - radancy.py (Citi, BlackRock) — does paginate, but caps at _MAX_PAGES=15
+    per category as a safety bound. Own docstring flags that Citi's
+    "technology-jobs" category alone has ~990 global postings, which may
+    exceed what 15 pages actually covers. Unlike icims/algolia, this DOES
+    self-log a warning when a full-scan run hits the page cap — not silent.
+
+===============================================================================
+NEXT STEPS (once Raspberry Pi is set up)
+===============================================================================
+  [ ] Fix fetch.py robots.txt wildcard matching (item 2) — do this FIRST,
+      since the EPAM sitemap crawler should be built on a parser that's
+      actually trustworthy.
+  [ ] Audit all adapters against corrected robots.txt matching for regressions.
+  [ ] Build EPAM incremental sitemap crawler (item 1).
+  [ ] Decide whether Phenom/iCIMS/Algolia are worth the same sitemap-style
+      investigation, or left as accepted small/latent gaps.
+  [ ] Consider whether radancy.py's 15-page cap needs raising for Citi's
+      technology-jobs category specifically.

@@ -72,8 +72,16 @@ def _score_keywords(text: str, spec: dict) -> float:
     return score
 
 
-def _disqualified(text: str, spec: dict) -> bool:
-    return any(_contains_term(text, dq) for dq in spec.get("disqualifiers", []))
+def _disqualified(text: str, title: str, spec: dict) -> bool:
+    """`disqualifiers` are checked against the whole posting text,
+    `title_disqualifiers` against the title only. The title-only list is
+    for terms that identify the role itself ("QA Engineer", "Internship")
+    but appear innocently in a normal developer description too ("work
+    closely with our QA engineer", "we also run an internship program").
+    """
+    return any(_contains_term(text, dq) for dq in spec.get("disqualifiers", [])) or any(
+        _contains_term(title, dq) for dq in spec.get("title_disqualifiers", [])
+    )
 
 
 # Catches "5 years", "5-10 years", "10+ years", "5 éves", "5 év" — takes the
@@ -91,12 +99,12 @@ def _exceeds_experience_cap(text: str, spec: dict) -> bool:
     return any(int(n) > max_years for n in _YEARS_RE.findall(text))
 
 
-def _level_disqualified(text: str, spec: dict) -> bool:
-    return _disqualified(text, spec) or _exceeds_experience_cap(text, spec)
+def _level_disqualified(text: str, title: str, spec: dict) -> bool:
+    return _disqualified(text, title, spec) or _exceeds_experience_cap(text, spec)
 
 
-def _level_gate(text: str, experience_level: str | None, spec: dict) -> bool:
-    if _level_disqualified(text, spec):
+def _level_gate(text: str, title: str, experience_level: str | None, spec: dict) -> bool:
+    if _level_disqualified(text, title, spec):
         return False
     exp_text = (experience_level or "").lower()
     ok_terms = spec.get("ok_experience_text", [])
@@ -105,6 +113,7 @@ def _level_gate(text: str, experience_level: str | None, spec: dict) -> bool:
 
 def score_posting(row: dict, keywords: dict) -> dict:
     text = _combined_text(row).lower()
+    title = (row.get("title") or "").lower()
 
     stack_score = _score_keywords(text, keywords["stack"])
     direction_score = _score_keywords(text, keywords["direction"])
@@ -114,10 +123,10 @@ def score_posting(row: dict, keywords: dict) -> dict:
         "gate_stack": stack_score >= keywords["stack"]["threshold"],
         "gate_direction": (
             direction_score >= keywords["direction"]["threshold"]
-            and not _disqualified(text, keywords["direction"])
+            and not _disqualified(text, title, keywords["direction"])
         ),
-        "gate_level": _level_gate(text, row.get("experience_level"), keywords["level"]),
-        "level_disqualified": _level_disqualified(text, keywords["level"]),
+        "gate_level": _level_gate(text, title, row.get("experience_level"), keywords["level"]),
+        "level_disqualified": _level_disqualified(text, title, keywords["level"]),
     }
 
 

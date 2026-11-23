@@ -31,11 +31,9 @@ stack:
     git: 1
     linux: 1
     aws: 1
-    azure: 1
-    celery: 1
-    redis: 1
     "microservice*": 1
     "c++": 1
+    golang: 1 # not plain "go": that's an everyday English word
   negative:
     php: -2
     wordpress: -2
@@ -56,7 +54,9 @@ level:
     - "1-3"
     - "2-3"
     - "junior*"
-  # Any of these anywhere in the combined text hard-disqualifies, regardless
+    - "medior*"
+  # Any of these anywhere in the combined text (title, card fields AND the
+  # full description) hard-disqualifies, regardless
   # of the structural signal above (catches "senior" mentioned in the title
   # even when the experience field itself looks junior-friendly). Explicit
   # year ranges like "5-10 years" don't need an entry here anymore — the
@@ -69,6 +69,19 @@ level:
     - principal
     - architect
     - "executive management"
+  # Same, but checked against the job TITLE only. Internships, trainee and
+  # student jobs aren't wanted regardless of level, but a normal job's
+  # description can mention them innocently ("we also run an internship
+  # program"). Whole-word "intern" so "internal"/"international" don't
+  # match; "gyakornok*" is the Hungarian (also covers "gyakornoki
+  # program"), "diákmunka" is student work, with and without the accent.
+  title_disqualifiers:
+    - intern
+    - "internship*"
+    - "gyakornok*"
+    - "trainee*"
+    - "diákmunka*"
+    - "diakmunka*"
 
 direction:
   threshold: 2
@@ -90,12 +103,15 @@ direction:
     "vue.js": -1
     "ui/ux": -2
     designer: -2
+    "bi developer*": -2
+    "data engineer*": -1 # also "data engineering"
   # Testing roles hard-disqualify even though "automation" is a positive
   # signal above: "QA Automation Engineer" scores automation:2 and often
   # python:3 on stack, clearing both thresholds despite being a testing
-  # job, not a developing job. Matched against the same combined
-  # text as the level gate.
-  disqualifiers:
+  # job, not a developing job. Checked against the job TITLE only: a
+  # developer's description often mentions testing innocently ("work
+  # closely with our QA engineer", "test automation is a plus").
+  title_disqualifiers:
     - "test automation"
     - "qa automation"
     - sdet
