@@ -1,0 +1,3 @@
+# Always LF in the repo and on checkout, even when edited on Windows:
+# a CRLF in install.sh or a systemd unit breaks it on the Pi.
+* text=auto eol=lf

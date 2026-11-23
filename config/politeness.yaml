@@ -1,6 +1,0 @@
-# Shared by every source's PoliteSession (tracker/fetch.py). One rate limit
-# for the whole tool, not per-source — no reason a well-behaved crawler
-# needs different manners for different sites.
-min_delay: 1.5
-max_delay: 3.0
-user_agent_contact_env: CRAWLER_CONTACT_EMAIL

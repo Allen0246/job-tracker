@@ -1,0 +1,14 @@
+# Template: deploy/install.sh fills in @USER@ and @PROJECT_DIR@ and copies
+# the result to /etc/systemd/system/. Edit this file, not the installed copy.
+[Unit]
+Description=profession.hu job tracker (crawl -> filter -> digest)
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=@USER@
+WorkingDirectory=@PROJECT_DIR@
+ExecStart=@PROJECT_DIR@/.venv/bin/python -m tracker.run_daily
+# A healthy run takes a few minutes; anything far past that is hung.
+TimeoutStartSec=1h

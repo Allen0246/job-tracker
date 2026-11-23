@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the job tracker once a day
+
+[Timer]
+# Local time: set the Pi's timezone first (sudo timedatectl set-timezone Europe/Budapest).
+OnCalendar=*-*-* 07:00:00
+# Spread the start a little so requests don't land at the exact same second daily.
+RandomizedDelaySec=15min
+# If the Pi was off or asleep at 07:00, run once as soon as it's back up.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

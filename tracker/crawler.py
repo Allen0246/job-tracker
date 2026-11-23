@@ -71,7 +71,7 @@ def crawl_target(session: PoliteSession, conn, sources: dict, target: dict) -> t
             card.work_arrangement = _infer_work_arrangement(card.location, target)
 
         seen_ids.update(card.posting_id for card in cards)
-        stats = upsert_cards(conn, cards, source="profession_hu")
+        stats = upsert_cards(conn, cards)
 
         for key in ("inserted", "updated_changed", "updated_unchanged"):
             totals[key] += stats[key]
@@ -96,7 +96,7 @@ def crawl_target(session: PoliteSession, conn, sources: dict, target: dict) -> t
 
 def run_crawl() -> dict:
     sources = load_yaml("sources.yaml")
-    session = PoliteSession(BASE_URL)
+    session = PoliteSession()
     conn = get_connection()
 
     results = {}
@@ -107,7 +107,6 @@ def run_crawl() -> dict:
             results[target["name"]] = totals
             all_seen_ids |= seen_ids
 
-        results["total_seen"] = len(all_seen_ids)
         if all_seen_ids:
             delisted = mark_delisted(conn, "profession_hu", all_seen_ids)
             log.info("delisted %d postings absent from this crawl", delisted)
